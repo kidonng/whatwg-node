@@ -1,12 +1,14 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 import type { Readable } from 'node:stream';
+import { getHeadersFromObj } from './LightHeaders';
+import { RequestBodyMethods, RequestBodyMethodsFromAsyncIterable, RequestBodyMethodsFromBlob, RequestBodyMethodsFromFormData, RequestBodyMethodsFromJson, RequestBodyMethodsFromString, RequestBodyMethodsFromUint8Array } from './RequestBodyMethods';
 
 function isAsyncIterable(body: any): body is AsyncIterable<any> {
   return body != null && typeof body === 'object' && typeof body[Symbol.asyncIterator] === 'function';
 }
 
-export interface NodeRequest {
+export interface NodeRequest extends AsyncIterable<Uint8Array> {
   protocol?: string;
   hostname?: string;
   body?: any;
@@ -40,22 +42,13 @@ function configureSocket(rawRequest: NodeRequest) {
   rawRequest?.socket?.setKeepAlive?.(true);
 }
 
-function isRequestBody(body: any): body is BodyInit {
-  const stringTag = body[Symbol.toStringTag];
-  if (
-    typeof body === 'string' ||
-    stringTag === 'Uint8Array' ||
-    stringTag === 'Blob' ||
-    stringTag === 'FormData' ||
-    stringTag === 'URLSearchParams' ||
-    isAsyncIterable(body)
-  ) {
-    return true;
-  }
-  return false;
+interface LightRequest extends Partial<RequestBodyMethods> {
+  url: string;
+  method: string;
+  headers: Headers;
 }
 
-export function normalizeNodeRequest(nodeRequest: NodeRequest, RequestCtor: typeof Request): Request {
+export function normalizeNodeRequest(nodeRequest: NodeRequest): LightRequest {
   const rawRequest = nodeRequest.raw || nodeRequest.req || nodeRequest;
   configureSocket(rawRequest);
   let fullUrl = buildFullUrl(rawRequest);
@@ -67,13 +60,16 @@ export function normalizeNodeRequest(nodeRequest: NodeRequest, RequestCtor: type
     }
     fullUrl = urlObj.toString();
   }
-  const baseRequestInit: RequestInit = {
-    method: nodeRequest.method,
-    headers: nodeRequest.headers,
-  };
+  const headers = getHeadersFromObj(nodeRequest.headers);
+
+  const baseRequest = {
+    url: fullUrl,
+    method: nodeRequest.method || 'GET',
+    headers,
+  }
 
   if (nodeRequest.method === 'GET' || nodeRequest.method === 'HEAD') {
-    return new RequestCtor(fullUrl, baseRequestInit);
+    return baseRequest;
   }
 
   /**
@@ -84,35 +80,45 @@ export function normalizeNodeRequest(nodeRequest: NodeRequest, RequestCtor: type
    */
   const maybeParsedBody = nodeRequest.body;
   if (maybeParsedBody != null && Object.keys(maybeParsedBody).length > 0) {
-    if (isRequestBody(maybeParsedBody)) {
-      return new RequestCtor(fullUrl, {
-        ...baseRequestInit,
-        body: maybeParsedBody,
-      });
+    if (typeof maybeParsedBody === 'string') {
+      const requestBodyMethods = RequestBodyMethodsFromString(maybeParsedBody);
+      return {
+        ...baseRequest,
+        ...requestBodyMethods,
+      }
     }
-    const request = new RequestCtor(fullUrl, {
-      ...baseRequestInit,
-    });
-    if (!request.headers.get('content-type')?.includes('json')) {
-      request.headers.set('content-type', 'application/json');
-    }
-    return new Proxy(request, {
-      get: (target, prop: keyof Request, receiver) => {
-        switch (prop) {
-          case 'json':
-            return async () => maybeParsedBody;
-          default:
-            return Reflect.get(target, prop, receiver);
+    let requestBodyMethods: RequestBodyMethods | undefined;
+    const requestBodyType = maybeParsedBody[Symbol.toStringTag];
+    switch (requestBodyType) {
+      case 'Uint8Array':
+        requestBodyMethods = RequestBodyMethodsFromUint8Array(maybeParsedBody);
+        break;
+      case 'Blob':
+        requestBodyMethods = RequestBodyMethodsFromBlob(maybeParsedBody);
+        break;
+      case 'FormData':
+        requestBodyMethods = RequestBodyMethodsFromFormData(maybeParsedBody);
+        break;
+      default:
+        if (isAsyncIterable(maybeParsedBody)) {
+          requestBodyMethods = RequestBodyMethodsFromAsyncIterable(maybeParsedBody);
+        } else {
+          requestBodyMethods = RequestBodyMethodsFromJson(maybeParsedBody);
+          if (!headers.get('content-type')?.includes('json')) {
+            headers.set('content-type', 'application/json');
+          }
         }
-      },
-    });
+    }
+    return {
+      ...baseRequest,
+      ...requestBodyMethods,
+    };
   }
 
-  return new RequestCtor(fullUrl, {
-    headers: nodeRequest.headers,
-    method: nodeRequest.method,
-    body: rawRequest as any,
-  });
+  return {
+    ...baseRequest,
+    ...RequestBodyMethodsFromAsyncIterable(rawRequest)
+  };
 }
 
 export function isReadable(stream: any): stream is Readable {

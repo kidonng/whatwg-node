@@ -67,7 +67,7 @@ export function createServerAdapter<
   }
 
   function handleNodeRequest(nodeRequest: NodeRequest, serverContext: TServerContext): Promise<Response> {
-    const request = normalizeNodeRequest(nodeRequest, RequestCtor);
+    const request = normalizeNodeRequest(nodeRequest) as any;
     return handleRequest(request, serverContext);
   }
 
