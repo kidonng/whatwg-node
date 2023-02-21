@@ -1,0 +1,44 @@
+{
+  "name": "@whatwg-node/node-server",
+  "version": "0.0.0",
+  "description": "Server implementation for Node based on Fetch API",
+  "repository": {
+    "type": "git",
+    "url": "ardatan/whatwg-node",
+    "directory": "packages/node-server"
+  },
+  "author": "Arda TANRIKULU <ardatanrikulu@gmail.com>",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    },
+    "./*": {
+      "require": "./dist/*.js",
+      "import": "./dist/*.mjs"
+    }
+  },
+  "typings": "dist/index.d.ts",
+  "peerDependencies": {
+    "@types/node": "^18.0.6"
+  },
+  "dependencies": {
+    "@whatwg-node/events": "^0.0.2",
+    "@whatwg-node/node-fetch": "^0.3.0",
+    "tslib": "^2.3.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
+  "sideEffects": false,
+  "buildOptions": {
+    "input": "./src/index.ts"
+  },
+  "typescript": {
+    "definition": "dist/index.d.ts"
+  }
+}
