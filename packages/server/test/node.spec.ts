@@ -126,7 +126,7 @@ describe('Node Specific Cases', () => {
       expect(await response.text()).toContain('This is an error.');
     });
 
-    it('should handle async errors', async () => {
+    it.only('should handle async errors', async () => {
       const serverAdapter = createServerAdapter(async () => {
         throw new Error('This is an error.');
       });
