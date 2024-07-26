@@ -38,10 +38,6 @@ async function handleFastify(
 }
 
 describe('Fastify', () => {
-  if (process.env.LEAK_TEST) {
-    it('noop', () => {});
-    return;
-  }
   let serverAdapter: FastifyServerAdapter;
   const fastifyServer = fastify();
   fastifyServer.route({
